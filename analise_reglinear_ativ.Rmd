@@ -1,0 +1,109 @@
+---
+title: "Análise de Regressão Linear Múltipla"
+author: "Larissa Vitória Vasconcelos Sousa"
+date: "02/10/2023"
+output: 
+  html_document:
+    toc: true
+    number_sections: false  
+    theme: cosmo  
+    css: estilo.css  
+    highlight: tango  
+---
+
+
+# Aplicações de métodos estatísticos na área de Ciência de Dados.
+
+## 1. Digitar os dados referente a aplicação apresentada nos slides;
+Usando R:
+
+
+```{r dados, echo=TRUE, message=TRUE, warning=FALSE}
+# Dados
+dataset_ap <- data.frame(
+  apartamento = c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10),
+  preco_ap = c(650, 600, 450, 430, 430, 385, 380, 220, 220, 125),
+  metros_q = c(196, 150, 110, 130, 98, 110, 112, 70, 45, 33),
+  valor_condo = c(1039, 900, 750, 600, 550, 500, 500, 330, 300, 326),
+  num_quartos = c(3, 3, 2, 2, 2, 2, 2, 1, 1, 1)
+)
+
+print(dataset_ap)
+```
+
+## 2. Pesquisar sobre variáveis Dummy e Multicolinearidade;
+
+#### **Dummy**: é um artifício criado para representar as variáveis qualitativas de forma numérica. Variáveis dummies também são chamadas “dicotômicas” e “binárias” e são formadas a partir de variáveis qualitativas com duas categorias que se excluem mutuamente.Essas categorias são sempre associadas com dois valores discretos,  geralmente o 0 e 1. O zero representa a ausência do que se quer medir, e o um representa a presença (também chamado de “sucesso”) da característica desejada.
+
+#### Alguns exemplos:
+
+-   aluno sem acesso à internet (0) e aluno com acesso à internet (1);
+-   não fumante (0) e fumante (1);
+-   não há plano de saúde na empresa (0) há plano de saúde na empresa (1);
+-   pacientes não hipertensos (0) e pacientes hipertensos (1).
+
+
+#### **Multicolinearidade:** nome dado ao fenômeno de presença de relação linear aproximada entre os regressores. Problema de estimação causado por uma amostra particular. Não é um problema teórico. 
+
+#### Pode existir por diferentes motivos:  
+
+-   Regressores possuem a mesma tendência temporal;
+-   Algumas variáveis caminham na mesma direção porque os dados não foram coletados de uma base grande;
+-   Pode existir realmente algum tipo de relacionamento aproximado entre os regressores;
+
+
+## 3. Refazer as análises considerando TODOS os pressupostos apresentados até agora e interpretar os resultados;
+
+```{r modelo, echo=TRUE, message=TRUE, warning=FALSE}
+# Ajustando o modelo de regressão múltipla
+modelo <- lm(preco_ap ~ metros_q + valor_condo + num_quartos, data = dataset_ap)
+summary(modelo)
+```
+#### O modelo de regressão inclui as variáveis independentes "metros quadrados" (metros_q), "valor do condomínio" (valor_condo) e "número de quartos" (num_quartos) para prever a variável dependente "preço do apartamento" (preco_ap). Os resíduos representam os erros do modelo, ou seja, as diferenças entre os valores observados e os valores previstos. Eles têm uma distribuição aproximadamente normal com média próxima de zero. O intercepto é -11.9103, mas não é estatisticamente significativo (p = 0.7229). O coeficiente para "metros quadrados" é 0.9722, não é estatisticamente significativo (p = 0.2382). O coeficiente para "valor do condomínio" é 0.1378, também não é estatisticamente significativo (p = 0.3679). O coeficiente para "número de quartos" é 115.0399, esse sim tem uma significância marginal (p = 0.0826).O erro padrão dos resíduos é 33.73, que é uma medida da dispersão dos resíduos ao redor da linha de regressão. Quanto menor, melhor, pois indica um melhor ajuste do modelo aos dados. O R-squared é 0.9723, o que indica que o modelo explica aproximadamente 97.23% da variabilidade nos preços dos apartamentos.
+
+```{r correlacao, echo=TRUE, message=FALSE, warning=FALSE}
+# Análise de Multicolinearidade
+library(corrplot)
+cor_matrix <- cor(dataset_ap[, c("metros_q", "valor_condo", "num_quartos")])
+corrplot(cor_matrix, method = "color", type = "full", tl.col = "black", tl.srt = 45, addCoef.col = "white")
+
+```
+
+#### A figura acima é uma matriz de correlação, que é usada para visualizar as correlações entre variáveis independentes (preditoras) em um modelo de regressão múltipla. 
+
+#### "Valor do condomínio" e "metros quadrados" têm uma correlação positiva forte de 0,92, sugerindo que apartamentos maiores tendem a ter um valor de condomínio mais alto. "Número de quartos" e "metros quadrados" têm uma correlação positiva muito forte também (0,94), indicando que apartamentos maiores tendem a ter mais quartos. "Valor do condomínio" e "número de quartos" também têm uma correlação positiva muito forte de (0,94), indicando que apartamentos com mais quartos tendem a ter um valor de condomínio mais alto. 
+
+```{r residuos, echo=TRUE, message=TRUE, warning=FALSE}
+# Análise de Heterocedasticidade
+residuos <- resid(modelo)
+plot(modelo$fitted.values, residuos, xlab = "Valores Previstos", ylab = "Resíduos")
+```
+
+
+```{r durbi, echo=TRUE, message=TRUE, warning=FALSE}
+# Análise de Autocorrelação
+library(car)
+durbinWatsonTest(modelo)
+acf(residuos)
+
+```
+#### No teste de Durbin-Watson, o valor obtido pode ser comparado com os intervalos de referência. Se o valor estiver próximo de 2, isso indica que não há autocorrelação significativa nos resíduos. Se estiver significativamente abaixo de 2 (que é o caso em estudo), então possui autocorrelação positiva.
+
+```{r caso1, echo=TRUE, message=TRUE, warning=FALSE}
+# Caso 1
+modelo_caso1 <- lm(preco_ap ~ metros_q + valor_condo, data = dataset_ap)
+summary(modelo_caso1)
+
+```
+
+#### Os coeficientes do modelo são: Intercepto (Intercept): 19.7729, não é estatisticamente significativo, com um valor p de 0.5819, o que significa que o valor estimado da variável dependente quando todas as variáveis independentes são zero não é significativamente diferente de zero. Coeficiente para metros quadrados (metros_q): 1.8533, é estatisticamente significativo, com um valor p de 0.0409. Isso sugere que o número de metros quadrados tem um impacto significativo no preço dos apartamentos. Coeficiente para valor do condomínio (valor_condo): 0.3001 também é próximo da significância estatística, com um valor p de 0.0750. Isso sugere que o valor do condomínio pode ter algum efeito no preço dos apartamentos, mas não é tão forte quanto metros quadrados.
+
+```{r caso2, echo=TRUE, message=TRUE, warning=FALSE}
+# Caso 2
+modelo_caso2 <- lm(preco_ap ~ metros_q + valor_condo, data = dataset_ap)
+summary(modelo_caso2)
+
+```
+
+#### O Intercepto (Intercept) é 19.7729, não é estatisticamente significativo, com um valor p de 0.5819. O coeficiente para metros quadrados (metros_q): 1.8533 é estatisticamente significativo, com um valor p de 0.0409. O coeficiente para valor do condomínio (valor_condo): 0.3001 também é próximo da significância estatística, com um valor p de 0.0750. O modelo como um todo é estatisticamente significativo, com um valor F de 69.93 e um valor p muito baixo de 2.364e-05. O coeficiente de determinação (R-squared) é 0.9523, significa que o modelo explica cerca de 95.23% da variabilidade nos preços dos apartamentos.
+

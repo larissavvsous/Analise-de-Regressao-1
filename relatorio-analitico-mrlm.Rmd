@@ -1,0 +1,714 @@
+---
+title: "Relatório Analítico: Modelagem de Regressão Linear Múltipla para Previsão de Preços de Imóveis na Aldeota, Fortaleza, Ceará."
+autor: "Larissa Vitória Vasconcelos Sousa"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::robobook:
+    highlight: kate
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+> "A informação é o novo petróleo do século XXI e a análise de dados é o
+> novo motor de combustão."\
+> Peter Sondergaard
+
+## 1. Introdução
+
+##### O objetivo principal deste relatório é apresentar um Modelo de Regressão Linear Múltipla (MRLM) com o passo a passo, que possa ser utilizado para prever a variável 'preco' de imóveis no bairro Aldeota, Fortaleza, Ceará, com base em variáveis-chave contidas no dataset. Não é possível determinar o período exato dos dados que foram coletados, pois a página web não inclui informações específicas sobre as datas de publicação dos anúncios, porém o dataset foi coletado no dia 18/10/2023.
+
+
+## 2. Metodologia
+
+##### Antes de aplicar o MRLM, realizamos um pré-processamento dos dados para garantir que estejam em um formato adequado para a modelagem. Isso incluiu a limpeza de dados ausentes, tratamento de valores discrepantes e transformação de variáveis.
+
+##### O MRLM é uma técnica de modelagem estatística que visa prever uma variável dependente (neste caso, o preço dos imóveis) com base em um conjunto de variáveis independentes (usaremos . Utilizamos o MRLM para criar um modelo que relaciona as características dos imóveis ao preço de venda.
+
+
+## 3. Bibliotecas
+
+```{r lendo pacotes, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(DT) # para a tabela
+library(readr) # ler a base
+library(dplyr) # para sumarizar, filtrar, etc.
+library(knitr) # gerar relatórios dinâmicos
+library(magrittr)  # para utilizar o Pipe %>%
+library(tidyverse) # manipulação, exploração e visualização
+library(plotly) # gráficos interativos
+library(gridExtra) # varios graficos dentro de um quadro
+library(car) # realiza análises de regressão e diagnóstica modelos de regressão
+library(rstatix) # funções para análise estatística e visualização de dados
+library(lmtest) # realiza testes adicionais em modelos de regressão linear, como testes de heterocedasticidade e autocorrelação
+library(ggpubr) # funções para criar gráficos e tabelas de publicação de alta qualidade
+library(QuantPsyc) # análise de dados psicométricos e estatísticas quantitativas
+library(psych) # realiza análises psicométricas e estatísticas descritivas
+library(scatterplot3d) # cria gráficos de dispersão tridimensionais interativos
+library(ggplot2) # cria gráficos de alta qualidade
+
+
+```
+
+## 4. Base de dados
+
+##### Dataset coletado usando a ferramenta 'Instant Data Scraper' - é uma extensão do Chrome que usa Inteligência Artificial para prever automaticamente os dados mais relevantes nas páginas da web a serem extraídas e permite exportar esses dados para formatos de arquivo Excel ou CSV - da página web Zap Imóveis ([clique aqui](https://www.zapimoveis.com.br/venda/imoveis/ce+fortaleza++aldeota/?__ab=exp-aa-test:control,new-discover-zap:alert,vas-officialstore-social:enabled,deduplication:control&transacao=venda&onde=,Cear%C3%A1,Fortaleza,,Aldeota,,,neighborhood,BR%3ECeara%3ENULL%3EFortaleza%3EBarrios%3EAldeota,-3.740179,-38.499662,&pagina=1)).
+
+A base de dados bruta tem 360 observações e 9 colunas, são elas: 
+
+  - bairro
+  - rua
+  - descrição
+  - metros quadrados
+  - número de quartos
+  - número de banheiros 
+  - número de vagas para carro 
+  - preço do imóvel
+  - valor do iptu
+  - valor do condomínio
+
+
+## 5. Pré-processamento 
+
+### Vamos iniciar lendo a base!
+
+```{r base, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis <- read_csv("C:/Users/laris/Downloads/zapimoveis.csv")
+
+# Excluindo a coluna irrelevante (para este caso), por se tratar de texto muito longo.
+zapimoveis <- subset(zapimoveis, select = -descricao)
+
+datatable(zapimoveis, options = list(pageLength = 8), class = 'cell-border stripe', width = '100%')
+```
+
+
+### 5.1 Selecionando somente imóveis da Aldeota na coluna 'bairro':
+
+```{r Aldeota, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis <- zapimoveis %>%
+  filter(bairro == "Aldeota, Fortaleza")
+```
+
+### 5.2 Substituindo NA's por zero (0) nas colunas 'metros', 'banheiros', 'condominio-iptu' e 'vaga-carro':
+
+```{r banheiros vaga-carro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+zapimoveis <- zapimoveis %>%
+  mutate(
+    banheiros = ifelse(is.na(banheiros), 0, banheiros),
+    `vaga-carro` = ifelse(is.na(`vaga-carro`), 0, `vaga-carro`),
+    `condominio-iptu` = ifelse(is.na(`condominio-iptu`), 0, `condominio-iptu`),
+    metros = ifelse(is.na(metros), 0, metros)
+  )
+```
+
+### 5.3 Dividindo coluna 'condiminio-iptu' em duas, selecionando somente os valores numéricos (sem caracteres especiais):
+
+```{r condiminio-iptu em duas, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis <- zapimoveis %>%
+  mutate(
+    condominio = as.numeric(sub("Cond\\.\\s+R\\$\\s(\\d+).*", "\\1", `condominio-iptu`)),
+    iptu = as.numeric(sub(".*IPTU\\sR\\$\\s(\\d+)", "\\1", `condominio-iptu`))
+  )
+```
+
+### 5.4 Renomeando a coluna 'valor' para 'preco':
+
+```{r Renomeando a coluna, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis <- zapimoveis %>%
+  rename(preco = valor)
+```
+
+### 5.5 Exluindo caracteres especiais como 'R$' e "m²' e espaços em branco das colunas 'preco' e 'metros', respectivamente:
+
+```{r excluir espaços em brancooo, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis$preco <- gsub("^\\s+", "", zapimoveis$preco)
+zapimoveis$preco <- gsub("R\\$", "", zapimoveis$preco)
+zapimoveis$metros <- gsub("\\s+$", "", zapimoveis$metros)
+zapimoveis$metros <- gsub("m\\²", "", zapimoveis$metros)
+view(zapimoveis$preco)
+```
+
+### 5.6 Verificando e excluindo linhas com valores não fixos:
+
+```{r linha anormal, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+linha_anormal <- zapimoveis %>%
+  filter(grepl(" - ", metros))
+print(linha_anormal)
+```
+
+Irão ser excluídas por conta de serem propagandas de vários imóveis, ou seja, não são números fixos, são intervalos de metros quadrados, banheiros, etc.
+
+```{r linha anormal exc, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis <- zapimoveis %>%
+  filter(!grepl(" - ", metros)) %>%
+  filter(!grepl(" - ", quartos)) %>%
+  filter(!grepl(" - ", banheiros)) %>%
+  filter(!grepl(" - ", `vaga-carro`))
+
+view(zapimoveis$preco)
+```
+
+### 5.7 Exluindo a coluna antiga 'condominio-iptu':
+
+```{r Exluindo coluna antiga, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis <- subset(zapimoveis, select = -`condominio-iptu`)
+View(zapimoveis)
+```
+
+### 5.8 Verificando estrutura do dataset:
+
+```{r Verificando estrutura, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+str(zapimoveis)
+```
+
+Como as colunas 'metros', 'quartos', 'banheiros', 'vaga-carro' e 'preco' estão como string, vamos nos certificar de que não haverá espaços em brancos antes de transformar para numérica.
+
+### 5.9 Verificando se há espaços em branco nas colunas:
+
+```{r espaços em branco, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+head(unique(zapimoveis$preco), 5)
+head(unique(zapimoveis$metros), 5)
+```
+
+Sim, é possível ver que na coluna 'preco' tem espaços em branco no início, e na coluna 'metros' tem espaços em branco no final. Então, vamos excluir os espaços em branco dessas duas colunas do dataset:
+
+### 5.10 Excluindo espaços em branco nas colunas 'preco' e 'metros':
+
+```{r excluir espaços em branco, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis$preco <- gsub("^\\s+", "", zapimoveis$preco)
+zapimoveis$metros <- gsub("\\s+$", "", zapimoveis$metros)
+
+head((zapimoveis$preco), 3)
+```
+
+Agora sim, podemos transformar para numéricas!
+
+```{r transformar, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis$metros <- as.numeric(zapimoveis$metros)
+zapimoveis$quartos <- as.numeric(zapimoveis$quartos)
+zapimoveis$banheiros <- as.numeric(zapimoveis$banheiros)
+zapimoveis$`vaga-carro` <- as.numeric(zapimoveis$`vaga-carro`)
+# zapimoveis$preco <- as.numeric(zapimoveis$preco)
+```
+
+Ops! A última linha deu erro mesmo exluindo espaços em branco. Vamos para um plano B.
+
+Vamos remover o ponto que separa os milhares na coluna 'preco', porque o R usa o ponto como separador decimal padrão e não para separar os milhares.
+
+```{r Remover o ponto, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis$preco <- as.numeric(gsub("\\.", "", zapimoveis$preco))
+```
+
+Agora sim!
+
+```{r Remover o ponto agr sim, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis$preco <- as.numeric(zapimoveis$preco)
+view(zapimoveis)
+```
+
+Verificando novamente a estrutura do dataset:
+
+```{r novamente a estrutura, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+str(zapimoveis)
+```
+
+Tudo ok. Let's go!
+
+### 5.11 Verificando se ainda há NA:
+
+```{r ainda ha NA, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+colSums(is.na(zapimoveis))
+```
+
+Pode-se analisar que há 28 NA's na coluna 'rua' e 1 NA na coluna 'quartos'. Iremos remover pois não temos conhecimento de todas. 
+
+```{r excluirNA, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+zapimoveis <- zapimoveis[!is.na(zapimoveis$quartos), ]
+zapimoveis <- zapimoveis[!is.na(zapimoveis$rua), ]
+```
+
+
+
+## 6 Base de dados tratada
+
+```{r Base de dados tratada, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+datatable(zapimoveis, options = list(pageLength = 9), class = 'cell-border stripe', width = '100%')
+
+```
+
+
+
+## 7. Análise Exploratória dos Dados (EDA)
+
+### Começaremos calculando a média e a variância da nossa variável resposta "preço":
+
+```{r preco var esp, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+Y <- zapimoveis$preco
+
+media_y <- mean(Y)
+variancia_y <- var(Y)
+
+cat("A média de Y (preço) eh: ", media_y)
+cat("\nA variancia de Y (preço) eh: ", variancia_y)
+
+```
+
+### 7.1 Contagem de imóveis por rua
+
+```{r Contagem de Imoveis por Rua, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+library(dplyr)
+
+contagem_por_rua <- zapimoveis %>%
+  group_by(rua) %>%
+  summarise(contagem = n())
+
+head((contagem_por_rua), 10)
+
+```
+
+
+Isso irá criar um novo conjunto de dados chamado contagem_por_rua com duas colunas: "rua" e "contagem", que representa o número de imóveis em cada rua.
+
+### 7.2 Ranking de imóveis por rua
+
+```{r Ruas mais repetidas, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+ruas_mais_repetidas <- contagem_por_rua %>%
+  arrange(desc(contagem))
+
+head(ruas_mais_repetidas)
+
+```
+
+### 7.3 Top 3 ruas com mais imóveis à venda
+
+```{r pizza rua, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+colors <- c("#FFC0CB", "#FF69B4", "#FF1493")
+
+top_3_ruas <- ruas_mais_repetidas[1:3, ]
+
+plot_ly(data = top_3_ruas, labels = ~rua,
+        values = ~contagem, type = "pie",
+        textinfo = "percent", marker = list(colors = colors)) %>%
+  layout(title = "3 ruas com mais imóveis à venda")
+
+```
+
+
+### 7.4 Relação entre as variáveis
+
+
+```{r disp todas, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+library(reshape2)
+
+matriz_correlacao <- cor(zapimoveis[c("metros", "quartos", "banheiros", "iptu", "vaga-carro", "condominio")])
+
+cor_palette <- colorRampPalette(c("white", "pink", "magenta"))(100)
+
+ggplot(data = reshape2::melt(matriz_correlacao), aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = cor_palette) +
+  labs(title = "Gráfico de Correlação",
+       x = "",
+       y = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = round(value, 2)), vjust = 1)
+```
+Observa-se que há algumas bem correlacionadas, como vaga-carro e metros, vaga-carro e quartos, banheiros e metros.
+
+Agora, vamos ver as variáveis que estarão no modelo mais especificamente:
+  
+```{r disp metros e preco, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+graf1 <- ggplot(data = zapimoveis, aes(x = metros, y = preco)) +
+  geom_point(color = "magenta") +
+  labs(x = "Metros Quadrados", y = "Preço", title = "Metros quadrados vs Preço")
+
+graf2 <- ggplot(data = zapimoveis, aes(x = quartos, y = preco)) +
+  geom_point(color = "magenta") +
+  labs(x = "Número de quartos", y = "Preço", title = "N° de quartos vs Preço")
+
+graf3 <- ggplot(data = zapimoveis, aes(x = metros, y = quartos)) +
+  geom_point(color = "magenta") +
+  labs(x = "Metros Quadrados", y = "N° de quartos", title = "N° de quartos vs Metros quadrados")
+
+# Coloque os gráficos lado a lado
+grid.arrange(graf1, graf2, graf3, ncol = 2)
+
+```
+  - Em "Metros quadrados vs Preço" vemos que à medida que o imóvel é grande, o preço tende a subir.
+  - Em "Número de quartos vs Preço" percebemos que à medida que o imóvel tem muitos quartos, o preço tende a subir também.
+  - O último gráfico é meio óbvio, à medida que o imóvel tem muitos quartos, aumenta o tamanho dele.
+
+
+### 7.5 Distribuição das variáveis
+
+Abaixo vemos como elas estão distribuídas:
+
+```{r histogramas, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+hist_metros <- ggplot(data = zapimoveis, aes(x = metros)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "pink") +
+  geom_density(color = "black") +
+  labs(x = "Metros")
+
+hist_quartos <- ggplot(data = zapimoveis, aes(x = quartos)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "pink") +
+  geom_density(color = "black") +
+  labs(x = "Quartos")
+
+hist_preco <- ggplot(data = zapimoveis, aes(x = preco)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "pink") +
+  geom_density(color = "black") +
+  labs(x = "Preço")
+
+
+grid.arrange(hist_metros, hist_quartos, hist_preco, ncol = 2)
+
+```
+
+
+
+
+```{r boxs, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(ggplot2)
+library(gridExtra)
+
+boxplot_metros <- ggplot(data = zapimoveis, aes(y = metros)) +
+  geom_boxplot(fill = "pink") + labs(y = "Metros")
+
+boxplot_quartos <- ggplot(data = zapimoveis, aes(y = quartos)) +
+  geom_boxplot(fill = "pink") + labs(y = "Quartos")
+
+boxplot_preco <- ggplot(data = zapimoveis, aes(y = preco)) +
+  geom_boxplot(fill = "pink") + labs(y = "Preço")
+
+grid.arrange(boxplot_metros, boxplot_quartos, boxplot_preco, ncol = 3)
+
+
+```
+
+
+
+## 8. Construção do Modelo de Regressão Múltipla
+
+### 8.1 Conceito
+
+Em um Modelo de Regressão Múltipla, a variável dependente \(Y\) será determinada por mais de uma variável independente \(X\). Genericamente, um Modelo de Regressão Múltipla com \(k\) variáveis independentes e \(p\) parâmetros \(p=k+1\) pode ser representado por:
+
+$$Y_i=\alpha+B_1X_1+B_2X_2+...+B_kX_k+e_i$$ 
+
+Onde: 
+
+  - \(Y_i\) é a variável dependente (ou resposta) que você está tentando prever ou explicar com base em um conjunto de variáveis independentes;
+ 
+  - \(\alpha\) é o valor esperado de Y quando todos as variáveis independentes forem nulas;
+
+  - \(B_1 ... B_k\) são os coeficientes de regressão;
+ 
+  - \(X_1 ... X_k\) são as variáveis independentes, também conhecidas como preditores ou regressores;
+
+  - \(e_i\) é o erro não explicado pelo modelo;
+
+
+Vamos selecionar as variáveis realizando análises estatísticas e métodos de seleção de variáveis para escolher quais variáveis independentes incluir no modelo.
+
+
+Vamos analisar a relação entre elas:
+
+
+```{r selecao var, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+library(ggplot2)
+
+
+matriz_correlacao <- cor(zapimoveis[c("metros", "quartos")])
+
+ggplot(data = reshape2::melt(matriz_correlacao), aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradientn(colors = cor_palette) +
+  labs(title = "Gráfico de Correlação",
+       x = "",
+       y = "") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  geom_text(aes(label = round(value, 2)), vjust = 1)
+```
+
+Vamos interpretar:
+
+   - Metros vs. quartos (as duas variáveis que vamos considerar mais relevantes para o modelo) tem correlação positiva moderada (0,42), que significa que à medida que a área do imóvel aumenta, o número de quartos tende a aumentar.
+
+   
+
+Logo, nosso modelo será $$ preço=\alpha+B_1 \times metros+B_2 \times quartos$$
+
+### 8.2 Modelo
+
+```{r modelo, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+modelo <- lm(preco ~ metros + quartos, data = zapimoveis)
+
+modelo
+
+```
+
+
+Sendo:
+
+ - preco é a variável de resposta (preço do imóvel)
+ 
+ - \(\alpha\) é o intercepto, que representa o valor esperado do preço quando todas as variáveis independentes são nulas
+
+ - \(B_1, B_2, B_3, B_4\) são os coeficientes de regressão associados a cada variável independente (metros, quartos, banheiros, vaga-carro, iptu, condominio)
+ 
+ - Metros e quartos são as variáveis independentes
+ 
+ - e é o erro, que representa a variação não explicada pelo modelo
+
+
+Assim: 
+
+$$ preço=258238+4703 \times metros+58489 \times quartos$$
+Verificando a significância de cada coeficiente do modelo:
+
+
+```{r Verificando a significancia, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+summary(modelo)
+
+```
+
+### 8.3 Análise de variância
+```{r Analise de variancia, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+modelo <- aov(modelo)
+anova(modelo)
+```
+
+### 8.4 Transformação de Y usando BoxCox
+
+A transformação Box-Cox é uma transformação de potência que elimina a não linearidade entre variáveis, variâncias diferentes e assimetria variável. A capacidade de transformar uma variável em uma nova variável com distribuição normal é, portanto, muito útil.
+
+A expressão a seguir fornece transformações das funções Box-Cox para vários valores de lambda:
+
+
+$$\left\{\begin{matrix}\frac{x^\lambda-1}{\lambda} \:  se \: \lambda \neq 0,\\  \log (x)\: se\: \lambda = 0\end{matrix}\right.$$
+
+
+sendo Y a variável alterada e lambda o parâmetro de transformação.
+
+
+
+```{r transformar o y, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+# Transformaros dados que não se aderem a distribuição normal
+
+library(MASS)
+boxcox_result <- boxcox(modelo)
+lambda <- boxcox_result$x[which.max(boxcox_result$y)]
+zapimoveis$preco_boxcox <- (zapimoveis$preco^lambda - 1) / lambda
+lambda
+
+
+```
+
+A linha vertical tracejada no centro representa o parâmetro estimado lambda, e os outros dois o intervalo de confiança de 95% da estimativa.
+
+
+```{r transformar o yy, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+# Aplicando a transformação Box-Cox para lambda aprox. 0 = log(x)
+novo_y <- log(zapimoveis$preco_boxcox)
+
+ggplot(data = zapimoveis, aes(x = novo_y)) +
+  geom_histogram(aes(y = ..density..), bins = 30, fill = "pink") +
+  geom_density(color = "black") +
+  labs(x = "Preço")
+
+
+```
+
+Como o lambda está próximo de zero, temos que a transformação que foi feita foi $$log(x)$$.
+
+
+### 8.5 Novo modelo
+
+```{r novo modelo, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+novo_modelo <- lm(novo_y ~ metros + quartos, data = zapimoveis)
+
+novo_modelo
+
+```
+Sendo:
+
+$$ preço=3.2911090+0.0002502 \times metros+0.0199079 \times quartos$$
+
+### 8.6 Análise de variância
+```{r Analise de variancia2, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+modelo2 <- aov(novo_modelo)
+anova(modelo2)
+```
+
+
+
+## 9. Verificar os pressuspostos da Regressão Linear
+
+```{r analisar os pressuspostos, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+par(mfrow = c(2,2))
+plot(novo_modelo, which = 1, main = "Linearidade")
+
+plot(novo_modelo, which = 2, main = "Normalidade dos Resíduos")
+
+plot(novo_modelo, which = 3, main = "Homocedasticidade")
+plot(novo_modelo, which = 4, main = "Outliers e Pontos Influentes")
+
+
+```
+
+O gráfico "Residuals vs Fitted" (resíduos pelos valores ajustados), nos mostra se há linearidade, como a linha em vermelho está longe da pontilhada, podemos dizer que não há linearidade.
+
+No segundo gráfico, "Normal Q-Q", nos diz se os resíduos possuem distribuição normal, no centro estão bem próximos da linha, porém nas extremimdades não estão, então não podemos considerar normalidade.
+
+No gráfico, "Scale-Location", analisamos se há homocedasticidade, dizemos que há quando os pontos estiverem espalhados de forma retangular no gráfico, subjetivamente, existe homocedasticidade.
+
+No último gráfico, "Residuals vs Leverage", observa-se se existe outliers ou pontos influentes, caso existam, vai aparecer uma pequena linha pontilhada vermelha na parte superior do gráfico e esse(s) ponto(s) estarão para fora dessa linha pontilhada vermelha. Ou seja, nesse caso, está ok. O esperado também é que esses resíduos estejam entre -3 e 3, sobre os padronizados. Vemos que isso não é atendido, pois vemos um limite de 0 a 5-6.
+
+
+Para não ficarmos só na subjetividade, vamos para os testes!
+
+
+### 9.1 Normalidade dos resíduos:
+
+Esse teste tem como hipótese nula e alternativa, respectivamente:
+
+$$H_0: \, distribuição\, \,dos\, \,dados\, = normal\rightarrow p> 0,05 \\ H_1: \, distribuição\, \,dos\, \,dados\,  \neq  normal\rightarrow p\leq 0,05$$
+
+
+```{r Shapiro, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+
+shapiro.test(novo_modelo$residuals)
+```
+
+Então, como o p-value foi menor que 0,05, dizemos que a distribuição é diferente da normal.
+
+
+### 9.2 Outliers nos resíduos
+
+```{r Outliers, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+summary(rstandard(novo_modelo))
+```
+Contrastando com o que foi dito anteriormente, os dados estão no intervalo esperado (-3, 3) e mediana está próxima de zero, então não temos outliers.
+
+
+### 9.3 Independência dos resíduos
+
+Esse teste tem como hipótese nula e alternativa, respectivamente:
+
+$$H_0: \, não\, \,há\, \,autocorrelação\, \rightarrow p> 0,05 \\ H_1: \, há\, \,autocorrelação\, \,\rightarrow p\leq 0,05 $$
+
+
+```{r Independencia, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+durbinWatsonTest(novo_modelo)
+```
+
+Nessa estatística, a gente considera que não há autocorrelação nos resíduos quando o valor é próximo de 2. Então, como o valor é de aproximadamente 2.01, está ótimo porque mostra que não tem resíduos dependentes, ou seja, eles não estão correlacionados. E o valor de p só reforça a estatística anterior, ele foi 0,872, ou seja, maior que 0,05, então descartamos a hipótese alternativa e temos que realmente não há autocorrelação. 
+
+
+### 9.4 Homocedasticidade
+
+Esse teste tem como hipótese nula e alternativa, respectivamente:
+
+$$H_0: \,há\, \,homocedasticidade\, \rightarrow p> 0,05 \\ H_1: \, não\, \, há\, \,homocedasticidade\, \,\rightarrow p\leq 0,05$$
+
+```{r Homocedasticidade, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+bptest(novo_modelo)
+```
+Então, como temos p valor menor que 0,05, descartamos a hipótese nula, ou seja, não existe homocedasticidade.
+
+
+### 9.5 Ausência de multicolinearidade
+
+Afirmamos que existe multicolinearidade, quando coeficiente de correlação de Pearson r > 0.9 (ou 0.8). E, também, quando o VIF (medida de multicolinearidade) > 10.
+
+```{r multicolinearidade, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+imoveis <- subset(zapimoveis, select = c(quartos, metros))
+
+pairs.panels(imoveis) #r > 0.9 ou 0.8
+
+```
+É possível ver que as variáveis "metros" vs "quartos" é igual a 0.42, ou seja, não existe multicolinearidade entre elas.
+
+
+```{r vif, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+vif(novo_modelo) # VIF > 10
+
+```
+
+Não tem nenhum valor > 10. 
+
+
+
+## 9. Interpretação das estimativas e medidas de qualidade do ajuste;
+
+### 9.1 Coeficientes da Regressão
+
+
+$$ preço=3.2911090+0.0002502 \times metros+0.0199079 \times quartos$$
+
+  - O coeficiente para "metros" é 0.0002502. Isso significa que, para cada aumento de uma unidade no número de metros quadrados, espera-se um aumento de 0.0002502 unidades no preço do imóvel.
+  - O coeficiente para "quartos" é 0.0199079. Isso significa que, para cada aumento de uma unidade no número de quartos, espera-se um aumento de 0.0199079 unidades no preço do imóvel.
+  
+
+### 9.2 Intercepto 
+
+É o valor esperado do preço quando todas as variáveis independentes são iguais a zero. Neste contexto, isso significa que se um imóvel tiver zero metros quadrados e zero quartos, o preço esperado seria igual a 3.2911090.
+
+
+### 9.3 Medidas de Qualidade do Ajuste (R²)
+
+O R² é uma medida que indica a proporção da variabilidade na variável dependente (preço) que é explicada pelo modelo. Em outras palavras, é uma medida da qualidade do ajuste do modelo aos dados. Quanto maior o R², melhor o modelo se ajusta aos dados.
+
+```{r r2 novo modelo, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+summary(novo_modelo)
+```
+
+  - **R-quadrado (R²):** O R-quadrado é igual a 0.4326. Isso significa que cerca de 43.26% da variabilidade no preço do imóvel é explicada pelo modelo, que inclui as variáveis metros e quartos.
+  - **Residual standard error:** O erro padrão residual é igual a 0.07119. Isso representa a variação não explicada pelo modelo.
+  - **F-statistic:** O valor da estatística F é 101.8, com um p-valor muito baixo (p-value: < 2.2e-16). Isso sugere que pelo menos uma das variáveis independentes (metros e quartos) é significativa na explicação do preço do imóvel.
+  
+
+
+## 10. ANOVA;
+
+```{r anova, echo=TRUE, message=FALSE, warning=FALSE, paged.print=FALSE}
+anova(novo_modelo) 
+
+```
+![Tabela da ANOVA](C:/Users/laris/Downloads/tabelamrlmanalise.png){width=100%}
+
+
+## 12. Conclusões
+
+Esse breve estudo revelou que ambas as variáveis independentes têm um impacto significativo no modelo de regressão, com valores p muito baixos. Portanto, tanto o tamanho (metros) quanto o número de quartos (quartos) têm influência estatisticamente significativa no preço do imóvel representado por novo_y. Isso torna o modelo de regressão um pouco válido e confiável para explicar as variações nos preços dos imóveis com base nessas duas variáveis independentes.
+
+
+
+## Referências
+
+Ivan Bezerra. Transformação de dados. https://lec.pro.br/download/material_didatico/pdf_files/est_experimental/transformacoes.pdf
+
+Francisco Alberto. (2014). A QUESTÃO DA NÃO NORMALIDADE: uma revisão. http://www.iea.sp.gov.br/ftpiea/publicar/rea2014-2/rea2-22014.pdf
+
+Transformação de dados. https://agronomiar.github.io/livroagro/transforma%C3%A7%C3%A3o-de-dados.html
+
+R CODER. Box Cox transformation in R. https://r-coder.com/box-cox-transformation-r/#Box_Cox_transformation_example
+
+
+
+
+
